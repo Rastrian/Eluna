@@ -521,6 +521,7 @@ public:
     void OnRemove(Creature* creature);
     void OnRemove(GameObject* gameobject);
 
+#ifndef TRINITY
     /* Instance */
     void OnInitialize(ElunaInstanceAI* iAI);
     void OnLoad(ElunaInstanceAI* iAI);
@@ -535,6 +536,7 @@ public:
     void OnGameObjectCreate(ElunaInstanceAI* iAI, GameObject* gameobject);
     bool OnCheckEncounterInProgress(ElunaInstanceAI* iAI);
     bool OnCheckCondition(ElunaInstanceAI* iAI, Player const* source, uint32 instance_condition_id, WorldObject const* conditionSource, uint32 conditionSourceType);
+#endif
 
     /* World */
     void OnOpenStateChange(bool open);
