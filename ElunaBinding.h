@@ -30,12 +30,14 @@ public:
         int functionReference;
         bool isTemporary;
         uint32 remainingShots;
+        bool hasCancelCallback; // If `true`, a callback exists that clears this binding.
         Eluna& E;
 
-        Binding(Eluna& _E, int funcRef, uint32 shots) :
+        Binding(Eluna& _E, int funcRef, uint32 shots, bool hasCancelCallback) :
             functionReference(funcRef),
-            isTemporary(shots != 0),
+            isTemporary(shots != 0 && !hasCancelCallback),
             remainingShots(shots),
+            hasCancelCallback(hasCancelCallback),
             E(_E)
         {
         }
@@ -63,6 +65,8 @@ public:
 
     // unregisters all registered functions and clears all registered events from the bindings
     virtual void Clear() { };
+
+    virtual void ClearOne(int ref) = 0;
 };
 
 template<typename T>
@@ -77,12 +81,17 @@ public:
     void Clear() override
     {
         WriteGuard guard(GetLock());
+        Binding* binding;
 
         for (EventToFunctionsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
         {
             FunctionRefVector& funcrefvec = itr->second;
             for (FunctionRefVector::iterator it = funcrefvec.begin(); it != funcrefvec.end(); ++it)
-                delete *it;
+            {
+                binding = (*it);
+                if (!binding->hasCancelCallback)
+                    delete binding;
+            }
             funcrefvec.clear();
         }
         Bindings.clear();
@@ -91,10 +100,38 @@ public:
     void Clear(uint32 event_id)
     {
         WriteGuard guard(GetLock());
+        Binding* binding;
 
         for (FunctionRefVector::iterator itr = Bindings[event_id].begin(); itr != Bindings[event_id].end(); ++itr)
-            delete *itr;
+        {
+            binding = (*itr);
+            if (!binding->hasCancelCallback)
+                delete binding;
+        }
         Bindings[event_id].clear();
+    }
+
+    void ClearOne(int ref) override
+    {
+        WriteGuard guard(GetLock());
+        Binding* binding;
+
+        for (EventToFunctionsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
+        {
+            FunctionRefVector& funcrefvec = itr->second;
+            for (FunctionRefVector::iterator it = funcrefvec.begin(); it != funcrefvec.end(); ++it)
+            {
+                binding = (*it);
+                if (binding->functionReference == ref)
+                {
+                    it = funcrefvec.erase(it);
+                    delete binding;
+                    return;
+                }
+            }
+        }
+
+        ASSERT(false && "tried to clear function ref that doesn't exist");
     }
 
     // Pushes the function references and updates the counters on the binds and erases them if the counter would reach 0
@@ -124,10 +161,10 @@ public:
             Bindings.erase(event_id);
     };
 
-    void Insert(int eventId, int funcRef, uint32 shots) // Inserts a new registered event
+    void Insert(int eventId, int funcRef, uint32 shots, bool hasCallback) // Inserts a new registered event
     {
         WriteGuard guard(GetLock());
-        Bindings[eventId].push_back(new Binding(E, funcRef, shots));
+        Bindings[eventId].push_back(new Binding(E, funcRef, shots, hasCallback));
     }
 
     // Checks if there are events for ID
@@ -162,6 +199,7 @@ public:
     void Clear() override
     {
         WriteGuard guard(GetLock());
+        Binding* binding;
 
         for (EntryToEventsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
         {
@@ -170,7 +208,11 @@ public:
             {
                 FunctionRefVector& funcrefvec = it->second;
                 for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
-                    delete *i;
+                {
+                    binding = (*i);
+                    if (!binding->hasCancelCallback)
+                        delete binding;
+                }
                 funcrefvec.clear();
             }
             funcmap.clear();
@@ -181,10 +223,42 @@ public:
     void Clear(uint32 entry, uint32 event_id)
     {
         WriteGuard guard(GetLock());
+        Binding* binding;
 
         for (FunctionRefVector::iterator itr = Bindings[entry][event_id].begin(); itr != Bindings[entry][event_id].end(); ++itr)
-            delete *itr;
+        {
+            binding = (*itr);
+            if (!binding->hasCancelCallback)
+                delete binding;
+        }
         Bindings[entry][event_id].clear();
+    }
+
+    void ClearOne(int ref) override
+    {
+        WriteGuard guard(GetLock());
+        Binding* binding;
+
+        for (EntryToEventsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
+        {
+            EventToFunctionsMap& funcmap = itr->second;
+            for (EventToFunctionsMap::iterator it = funcmap.begin(); it != funcmap.end(); ++it)
+            {
+                FunctionRefVector& funcrefvec = it->second;
+                for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
+                {
+                    binding = (*i);
+                    if (binding->functionReference == ref)
+                    {
+                        i = funcrefvec.erase(i);
+                        delete binding;
+                        return;
+                    }
+                }
+            }
+        }
+
+        ASSERT(false && "tried to clear function ref that doesn't exist");
     }
 
     // Pushes the function references and updates the counters on the binds and erases them if the counter would reach 0
@@ -217,10 +291,10 @@ public:
             Bindings.erase(entry);
     };
 
-    void Insert(uint32 entryId, int eventId, int funcRef, uint32 shots) // Inserts a new registered event
+    void Insert(uint32 entryId, int eventId, int funcRef, uint32 shots, bool hasCallback) // Inserts a new registered event
     {
         WriteGuard guard(GetLock());
-        Bindings[entryId][eventId].push_back(new Binding(E, funcRef, shots));
+        Bindings[entryId][eventId].push_back(new Binding(E, funcRef, shots, hasCallback));
     }
 
     // Returns true if the entry has registered binds
@@ -269,6 +343,7 @@ public:
     void Clear() override
     {
         WriteGuard guard(GetLock());
+        Binding* binding;
 
         for (GUIDToInstancesMap::iterator iter = Bindings.begin(); iter != Bindings.end(); ++iter)
         {
@@ -280,7 +355,11 @@ public:
                 {
                     FunctionRefVector& funcrefvec = it->second;
                     for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
-                        delete *i;
+                    {
+                        binding = (*i);
+                        if (!binding->hasCancelCallback)
+                            delete binding;
+                    }
                     funcrefvec.clear();
                 }
                 funcmap.clear();
@@ -293,11 +372,47 @@ public:
     void Clear(uint64 guid, uint32 instanceId, uint32 event_id)
     {
         WriteGuard guard(GetLock());
+        Binding* binding;
         FunctionRefVector& v = Bindings[guid][instanceId][event_id];
 
         for (FunctionRefVector::iterator itr = v.begin(); itr != v.end(); ++itr)
-            delete *itr;
+        {
+            binding = (*itr);
+            if (!binding->hasCancelCallback)
+                delete binding;
+        }
         v.clear();
+    }
+
+    void ClearOne(int ref) override
+    {
+        WriteGuard guard(GetLock());
+        Binding* binding;
+
+        for (GUIDToInstancesMap::iterator iter = Bindings.begin(); iter != Bindings.end(); ++iter)
+        {
+            InstanceToEventsMap& eventsMap = iter->second;
+            for (InstanceToEventsMap::iterator itr = eventsMap.begin(); itr != eventsMap.end(); ++itr)
+            {
+                EventToFunctionsMap& funcmap = itr->second;
+                for (EventToFunctionsMap::iterator it = funcmap.begin(); it != funcmap.end(); ++it)
+                {
+                    FunctionRefVector& funcrefvec = it->second;
+                    for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
+                    {
+                        binding = (*i);
+                        if (binding->functionReference == ref)
+                        {
+                            i = funcrefvec.erase(i);
+                            delete binding;
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        ASSERT(false && "tried to clear function ref that doesn't exist");
     }
 
     // Pushes the function references and updates the counters on the binds and erases them if the counter would reach 0
@@ -334,10 +449,10 @@ public:
             Bindings.erase(guid);
     };
 
-    void Insert(uint64 guid, uint32 instanceId, int eventId, int funcRef, uint32 shots) // Inserts a new registered event
+    void Insert(uint64 guid, uint32 instanceId, int eventId, int funcRef, uint32 shots, bool hasCallback) // Inserts a new registered event
     {
         WriteGuard guard(GetLock());
-        Bindings[guid][instanceId][eventId].push_back(new Binding(E, funcRef, shots));
+        Bindings[guid][instanceId][eventId].push_back(new Binding(E, funcRef, shots, hasCallback));
     }
 
     // Returns true if the entry has registered binds

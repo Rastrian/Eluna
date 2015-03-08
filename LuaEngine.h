@@ -271,7 +271,7 @@ public:
     void RunScripts();
     bool GetReload() const { return reload; }
     bool IsEnabled() const { return enabled && IsInitialized(); }
-    void Register(uint8 reg, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int func, uint32 shots);
+    int Register(lua_State* L, uint8 reg, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int func, uint32 shots, bool returnCallback);
 
     // Non-static pushes, to be used in hooks.
     // These just call the correct static version with the main thread's Lua state.

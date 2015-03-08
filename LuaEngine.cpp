@@ -24,6 +24,7 @@
 extern "C"
 {
 // Base lua libraries
+#include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
 
@@ -906,56 +907,112 @@ ElunaObject* Eluna::CHECKTYPE(lua_State* luastate, int narg, const char* tname, 
     return *ptrHold;
 }
 
+static int cancelBinding(lua_State *L)
+{
+    int ref = lua_tointeger(L, lua_upvalueindex(1));
+
+    // This marker (initially `false`) is used to protect against calling this callback twice.
+    // After the first call, `alreadyCalled` will be `true`, so we know not to proceed.
+    bool alreadyCalled = lua_toboolean(L, lua_upvalueindex(2));
+
+    if (alreadyCalled)
+        return 0;
+    else
+    {
+        lua_pushboolean(L, true);
+        lua_replace(L, lua_upvalueindex(2));
+    }
+
+    ElunaBind* bindings1 = (ElunaBind*)lua_touserdata(L, lua_upvalueindex(3));
+    ASSERT(bindings1 != NULL);
+    bindings1->ClearOne(ref);
+
+    return 0;
+}
+
+static int createCancelCallback(lua_State* L, int ref, ElunaBind* bindings1)
+{
+    lua_pushinteger(L, ref);
+    lua_pushboolean(L, false);
+    lua_pushlightuserdata(L, bindings1);
+    lua_pushcclosure(L, &cancelBinding, 3);
+    return 1; // Always leaves exactly one thing (the C closure) on the stack.
+}
+
 // Saves the function reference ID given to the register type's store for given entry under the given event
-void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int functionRef, uint32 shots)
+int Eluna::Register(lua_State* L, uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, uint32 evt, int functionRef, uint32 shots, bool returnCallback)
 {
     switch (regtype)
     {
         case Hooks::REGTYPE_SERVER:
             if (evt < Hooks::SERVER_EVENT_COUNT)
             {
-                ServerEventBindings->Insert(evt, functionRef, shots);
-                return;
+                ServerEventBindings->Insert(evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, ServerEventBindings);
+
+                return 0;
             }
             break;
 
         case Hooks::REGTYPE_PLAYER:
             if (evt < Hooks::PLAYER_EVENT_COUNT)
             {
-                PlayerEventBindings->Insert(evt, functionRef, shots);
-                return;
+                PlayerEventBindings->Insert(evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, PlayerEventBindings);
+
+                return 0;
             }
             break;
 
         case Hooks::REGTYPE_GUILD:
             if (evt < Hooks::GUILD_EVENT_COUNT)
             {
-                GuildEventBindings->Insert(evt, functionRef, shots);
-                return;
+                GuildEventBindings->Insert(evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, GuildEventBindings);
+
+                return 0;
             }
             break;
 
         case Hooks::REGTYPE_GROUP:
             if (evt < Hooks::GROUP_EVENT_COUNT)
             {
-                GroupEventBindings->Insert(evt, functionRef, shots);
-                return;
+                GroupEventBindings->Insert(evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, GroupEventBindings);
+
+                return 0;
             }
             break;
 
         case Hooks::REGTYPE_VEHICLE:
             if (evt < Hooks::VEHICLE_EVENT_COUNT)
             {
-                VehicleEventBindings->Insert(evt, functionRef, shots);
-                return;
+                VehicleEventBindings->Insert(evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, VehicleEventBindings);
+
+                return 0;
             }
             break;
 
         case Hooks::REGTYPE_BG:
             if (evt < Hooks::BG_EVENT_COUNT)
             {
-                BGEventBindings->Insert(evt, functionRef, shots);
-                return;
+                BGEventBindings->Insert(evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, BGEventBindings);
+
+                return 0;
             }
             break;
 
@@ -966,11 +1023,15 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                 {
                     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                     luaL_error(L, "Couldn't find a creature with (ID: %d)!", id);
-                    return;
+                    return 0;
                 }
 
-                PacketEventBindings->Insert(id, evt, functionRef, shots);
-                return;
+                PacketEventBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, PacketEventBindings);
+
+                return 0;
             }
             break;
 
@@ -983,17 +1044,24 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                     {
                         luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                         luaL_error(L, "Couldn't find a creature with (ID: %d)!", id);
-                        return;
+                        return 0;
                     }
 
-                    CreatureEventBindings->Insert(id, evt, functionRef, shots);
+                    CreatureEventBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                    if (returnCallback)
+                        return createCancelCallback(L, functionRef, CreatureEventBindings);
                 }
                 else
                 {
                     ASSERT(guid != 0);
-                    CreatureUniqueBindings->Insert(guid, instanceId, evt, functionRef, shots);
+                    CreatureUniqueBindings->Insert(guid, instanceId, evt, functionRef, shots, returnCallback);
+
+                    if (returnCallback)
+                        return createCancelCallback(L, functionRef, CreatureUniqueBindings);
                 }
-                return;
+
+                return 0;
             }
             break;
 
@@ -1004,11 +1072,15 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                 {
                     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                     luaL_error(L, "Couldn't find a creature with (ID: %d)!", id);
-                    return;
+                    return 0;
                 }
 
-                CreatureGossipBindings->Insert(id, evt, functionRef, shots);
-                return;
+                CreatureGossipBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, CreatureGossipBindings);
+
+                return 0;
             }
             break;
 
@@ -1019,11 +1091,15 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                 {
                     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                     luaL_error(L, "Couldn't find a gameobject with (ID: %d)!", id);
-                    return;
+                    return 0;
                 }
 
-                GameObjectEventBindings->Insert(id, evt, functionRef, shots);
-                return;
+                GameObjectEventBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, GameObjectEventBindings);
+
+                return 0;
             }
             break;
 
@@ -1034,11 +1110,15 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                 {
                     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                     luaL_error(L, "Couldn't find a gameobject with (ID: %d)!", id);
-                    return;
+                    return 0;
                 }
 
-                GameObjectGossipBindings->Insert(id, evt, functionRef, shots);
-                return;
+                GameObjectGossipBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, GameObjectGossipBindings);
+
+                return 0;
             }
             break;
 
@@ -1049,11 +1129,15 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                 {
                     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                     luaL_error(L, "Couldn't find a item with (ID: %d)!", id);
-                    return;
+                    return 0;
                 }
 
-                ItemEventBindings->Insert(id, evt, functionRef, shots);
-                return;
+                ItemEventBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, ItemEventBindings);
+
+                return 0;
             }
             break;
 
@@ -1064,24 +1148,33 @@ void Eluna::Register(uint8 regtype, uint32 id, uint64 guid, uint32 instanceId, u
                 {
                     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
                     luaL_error(L, "Couldn't find a item with (ID: %d)!", id);
-                    return;
+                    return 0;
                 }
 
-                ItemGossipBindings->Insert(id, evt, functionRef, shots);
-                return;
+                ItemGossipBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, ItemGossipBindings);
+
+                return 0;
             }
             break;
 
         case Hooks::REGTYPE_PLAYER_GOSSIP:
             if (evt < Hooks::GOSSIP_EVENT_COUNT)
             {
-                playerGossipBindings->Insert(id, evt, functionRef, shots);
-                return;
+                playerGossipBindings->Insert(id, evt, functionRef, shots, returnCallback);
+
+                if (returnCallback)
+                    return createCancelCallback(L, functionRef, playerGossipBindings);
+
+                return 0;
             }
             break;
     }
     luaL_unref(L, LUA_REGISTRYINDEX, functionRef);
     luaL_error(L, "Unknown event type (regtype %d, id %d, event %d)", regtype, id, evt);
+    return 0;
 }
 
 /*
