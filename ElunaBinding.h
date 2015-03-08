@@ -81,14 +81,13 @@ public:
     void Clear() override
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (EventToFunctionsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
         {
             FunctionRefVector& funcrefvec = itr->second;
             for (FunctionRefVector::iterator it = funcrefvec.begin(); it != funcrefvec.end(); ++it)
             {
-                binding = (*it);
+                Binding* binding = (*it);
                 if (!binding->hasCancelCallback)
                     delete binding;
             }
@@ -100,11 +99,10 @@ public:
     void Clear(uint32 event_id)
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (FunctionRefVector::iterator itr = Bindings[event_id].begin(); itr != Bindings[event_id].end(); ++itr)
         {
-            binding = (*itr);
+            Binding* binding = (*itr);
             if (!binding->hasCancelCallback)
                 delete binding;
         }
@@ -114,14 +112,13 @@ public:
     void ClearOne(int ref) override
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (EventToFunctionsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
         {
             FunctionRefVector& funcrefvec = itr->second;
             for (FunctionRefVector::iterator it = funcrefvec.begin(); it != funcrefvec.end(); ++it)
             {
-                binding = (*it);
+                Binding* binding = (*it);
                 if (binding->functionReference == ref)
                 {
                     it = funcrefvec.erase(it);
@@ -199,7 +196,6 @@ public:
     void Clear() override
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (EntryToEventsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
         {
@@ -209,7 +205,7 @@ public:
                 FunctionRefVector& funcrefvec = it->second;
                 for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
                 {
-                    binding = (*i);
+                    Binding* binding = (*i);
                     if (!binding->hasCancelCallback)
                         delete binding;
                 }
@@ -223,11 +219,10 @@ public:
     void Clear(uint32 entry, uint32 event_id)
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (FunctionRefVector::iterator itr = Bindings[entry][event_id].begin(); itr != Bindings[entry][event_id].end(); ++itr)
         {
-            binding = (*itr);
+            Binding* binding = (*itr);
             if (!binding->hasCancelCallback)
                 delete binding;
         }
@@ -237,7 +232,6 @@ public:
     void ClearOne(int ref) override
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (EntryToEventsMap::iterator itr = Bindings.begin(); itr != Bindings.end(); ++itr)
         {
@@ -247,7 +241,7 @@ public:
                 FunctionRefVector& funcrefvec = it->second;
                 for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
                 {
-                    binding = (*i);
+                    Binding* binding = (*i);
                     if (binding->functionReference == ref)
                     {
                         i = funcrefvec.erase(i);
@@ -343,7 +337,6 @@ public:
     void Clear() override
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (GUIDToInstancesMap::iterator iter = Bindings.begin(); iter != Bindings.end(); ++iter)
         {
@@ -356,7 +349,7 @@ public:
                     FunctionRefVector& funcrefvec = it->second;
                     for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
                     {
-                        binding = (*i);
+                        Binding* binding = (*i);
                         if (!binding->hasCancelCallback)
                             delete binding;
                     }
@@ -372,12 +365,11 @@ public:
     void Clear(uint64 guid, uint32 instanceId, uint32 event_id)
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
         FunctionRefVector& v = Bindings[guid][instanceId][event_id];
 
         for (FunctionRefVector::iterator itr = v.begin(); itr != v.end(); ++itr)
         {
-            binding = (*itr);
+            Binding* binding = (*itr);
             if (!binding->hasCancelCallback)
                 delete binding;
         }
@@ -387,7 +379,6 @@ public:
     void ClearOne(int ref) override
     {
         WriteGuard guard(GetLock());
-        Binding* binding;
 
         for (GUIDToInstancesMap::iterator iter = Bindings.begin(); iter != Bindings.end(); ++iter)
         {
@@ -400,7 +391,7 @@ public:
                     FunctionRefVector& funcrefvec = it->second;
                     for (FunctionRefVector::iterator i = funcrefvec.begin(); i != funcrefvec.end(); ++i)
                     {
-                        binding = (*i);
+                        Binding* binding = (*i);
                         if (binding->functionReference == ref)
                         {
                             i = funcrefvec.erase(i);
